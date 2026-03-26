@@ -49,7 +49,8 @@ def sets():
 
 @app.route("/set")
 def legoSet():  # We don't want to call the function `set`, since that would hide the `set` data type.
-    template = open("templates/set.html").read()
+    with open("templates/set.html") as f:
+        template = f.read()
     return Response(template)
 
 
