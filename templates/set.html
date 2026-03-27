@@ -21,25 +21,30 @@
             <thead><tr><th>Image</th><th>Brick type</th><th>Color</th><th>Count</th></tr></thead>
             <tbody id="inventory"></tbody>
         </table>
-        <script>
-            const urlParameters = new URLSearchParams(document.location.search);
-            const setId = urlParameters.get("id");
-            fetch(`/api/set?id=${setId}`)
-                .then(function(setData) { return setData.json(); })
-                .then(function(setJson) {
-                    const inventoryTable = document.getElementById("inventory");
-                    const inventoryRow = document.createElement("tr");
-                    inventoryRow.innerHTML = (
-                        "<td>Example row</td>" +
-                        "<td>to show how to</td>" +
-                        "<td>dynamically construct HTML</td>" +
-                        "<td>in JavaScript</td>"
-                    )
-                    inventoryTable.appendChild(inventoryRow);
-                })
-                .catch(function(err) {
-                    document.getElementById("error").textContent = "Failed to load data: " + err;
-                });
-        </script>
+
+<script>
+    const urlParameters = new URLSearchParams(document.location.search);
+    const setId = urlParameters.get("id");
+    fetch(`/api/set?id=${setId}`)
+        .then(function(response) { return response.json(); })
+        .then(function(setJson) {
+            document.getElementById("setId").textContent = setJson.id;
+            document.getElementById("setName").textContent = setJson.name;
+
+            const inventoryTable = document.getElementById("inventory");
+            for (const item of setJson.inventory) {
+                const row = document.createElement("tr");
+                row.innerHTML = (
+                    `<td>${item.brick_type_id}</td>` +
+                    `<td>${item.color_id}</td>` +
+                    `<td>${item.count}</td>`
+                );
+                inventoryTable.appendChild(row);
+            }
+        })
+        .catch(function(err) {
+            document.getElementById("error").textContent = "Failed to load data: " + err;
+        });
+</script>
     </body>
 </html>

@@ -1,6 +1,8 @@
 import json
 import html
+import struct
 import psycopg
+from collections import OrderedDict
 from flask import Flask, Response, request
 from time import perf_counter
 
@@ -14,17 +16,21 @@ DB_CONFIG = {
     "password": "bricks",
 }
 
+cache = OrderedDict()
+CACHE_MAX_SIZE = 100
 
 @app.route("/")
 def index():
-    template = open("templates/index.html").read()
-    return Response(template)
+   with open("templates/index.html") as f:
+      template = f.read()
+return Response(template)
 
 
 @app.route("/sets")
 def sets():
-    template = open("templates/sets.html").read()
-    rows = ""
+    with open("templates/sets.html") as f:
+        template = f.read()
+    row_parts = []
 
     start_time = perf_counter()
     conn = psycopg.connect(**DB_CONFIG)
@@ -34,19 +40,22 @@ def sets():
             for row in cur.fetchall():
                 html_safe_id = html.escape(row[0])
                 html_safe_name = html.escape(row[1])
-                existing_rows = rows
-                rows = existing_rows + f'<tr><td><a href="/set?id={html_safe_id}">{html_safe_id}</a></td><td>{html_safe_name}</td></tr>\n'
+                row_parts.append(
+                    f'<tr><td><a href="/set?id={html_safe_id}">{html_safe_id}</a></td><td>{html_safe_name}</td></tr>\n'
+                )
         print(f"Time to render all sets: {perf_counter() - start_time}")
     finally:
         conn.close()
 
+    rows = "".join(row_parts)
     page_html = template.replace("{ROWS}", rows)
-    return Response(page_html, content_type="text/html")
+    return Response(page_html, content_type="text/html", headers={"Cache-Control": "max-age=60"})
 
 
 @app.route("/set")
 def legoSet():  # We don't want to call the function `set`, since that would hide the `set` data type.
-    template = open("templates/set.html").read()
+    with open("templates/set.html") as f:
+        template = f.read()
     return Response(template)
 
 
@@ -54,20 +63,21 @@ def legoSet():  # We don't want to call the function `set`, since that would hid
 def apiSet():
     set_id = request.args.get("id")
 
+    if set_id in cache:
+        cache.move_to_end(set_id)
+        return Response(json.dumps(cache[set_id], indent=4), content_type="application/json")
+
+    start = perf_counter()
     conn = psycopg.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT id, name FROM lego_set WHERE id = %s", (set_id,))
             set_row = cur.fetchone()
-
-            cur.execute("""
-                SELECT brick_type_id, color_id, count
-                FROM lego_inventory
-                WHERE set_id = %s
-            """, (set_id,))
+            cur.execute("SELECT brick_type_id, color_id, count FROM lego_inventory WHERE set_id = %s", (set_id,))
             inventory_rows = cur.fetchall()
     finally:
         conn.close()
+    print(f"DB query: {perf_counter() - start:.4f}s")
 
     if not set_row:
         return Response("Set not found", status=404)
@@ -75,19 +85,17 @@ def apiSet():
     result = {
         "id": set_row[0],
         "name": set_row[1],
-        "inventory": []
+        "inventory": [
+            {"brick_type_id": row[0], "color_id": row[1], "count": row[2]}
+            for row in inventory_rows
+        ]
     }
 
-    for row in inventory_rows:
-        result["inventory"].append({
-            "brick_type_id": row[0],
-            "color_id": row[1],
-            "count": row[2]
-        })
+    cache[set_id] = result
+    if len(cache) > CACHE_MAX_SIZE:
+        cache.popitem(last=False)
 
-    json_result = json.dumps(result, indent=4)
-    return Response(json_result, content_type="application/json")
-
+    return Response(json.dumps(result, indent=4), content_type="application/json")
 
 @app.route("/api/set_binary")
 def apiSetBinary():
@@ -137,3 +145,4 @@ if __name__ == "__main__":
     app.run(port=5000, debug=True)
 
 # Note: If you define new routes, they have to go above the call to `app.run`.
+
