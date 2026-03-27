@@ -1,5 +1,6 @@
 import json
 import html
+import struct
 import psycopg
 from collections import OrderedDict
 from flask import Flask, Response, request
@@ -18,11 +19,11 @@ DB_CONFIG = {
 cache = OrderedDict()
 CACHE_MAX_SIZE = 100
 
-
 @app.route("/")
 def index():
-    template = open("templates/index.html").read()
-    return Response(template)
+   with open("templates/index.html") as f:
+      template = f.read()
+return Response(template)
 
 
 @app.route("/sets")
@@ -96,8 +97,52 @@ def apiSet():
 
     return Response(json.dumps(result, indent=4), content_type="application/json")
 
+@app.route("/api/set_binary")
+def apiSetBinary():
+    set_id = request.args.get("id")
 
+    conn = psycopg.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM lego_set WHERE id = %s", (set_id,))
+            set_row = cur.fetchone()
+
+            cur.execute("""
+                SELECT brick_type_id, color_id, count
+                FROM lego_inventory
+                WHERE set_id = %s
+            """, (set_id,))
+            inventory_rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if not set_row:
+        return Response("Set not found", status=404)
+
+    parts = []
+
+    set_id_bytes = set_row[0].encode("utf-8")
+    parts.append(struct.pack("I", len(set_id_bytes)))
+    parts.append(set_id_bytes)
+
+    name_bytes = set_row[1].encode("utf-8")
+    parts.append(struct.pack("I", len(name_bytes)))
+    parts.append(name_bytes)
+
+    parts.append(struct.pack("I", len(inventory_rows)))
+
+    for row in inventory_rows:
+        brick_type_id_bytes = row[0].encode("utf-8")
+        parts.append(struct.pack("I", len(brick_type_id_bytes)))
+        parts.append(brick_type_id_bytes)
+        parts.append(struct.pack("I", row[1]))
+        parts.append(struct.pack("I", row[2]))
+
+    data = b"".join(parts)
+    
+    return Response(data, content_type="application/octet-stream")
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
 
 # Note: If you define new routes, they have to go above the call to `app.run`.
+
