@@ -111,25 +111,27 @@ def apiSetBinary():
     if not set_row:
         return Response("Set not found", status=404)
 
-    data = b""
+    parts = []
 
     set_id_bytes = set_row[0].encode("utf-8")
-    data += struct.pack("I", len(set_id_bytes))
-    data += set_id_bytes
+    parts.append(struct.pack("I", len(set_id_bytes)))
+    parts.append(set_id_bytes)
 
     name_bytes = set_row[1].encode("utf-8")
-    data += struct.pack("I", len(name_bytes))
-    data += name_bytes
+    parts.append(struct.pack("I", len(name_bytes)))
+    parts.append(name_bytes)
 
-    data += struct.pack("I", len(inventory_rows))
+    parts.append(struct.pack("I", len(inventory_rows)))
 
     for row in inventory_rows:
         brick_type_id_bytes = row[0].encode("utf-8")
-        data += struct.pack("I", len(brick_type_id_bytes))
-        data += brick_type_id_bytes
-        data += struct.pack("I", row[1])
-        data += struct.pack("I", row[2])
+        parts.append(struct.pack("I", len(brick_type_id_bytes)))
+        parts.append(brick_type_id_bytes)
+        parts.append(struct.pack("I", row[1]))
+        parts.append(struct.pack("I", row[2]))
 
+    data = b"".join(parts)
+    
     return Response(data, content_type="application/octet-stream")
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
