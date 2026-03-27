@@ -23,8 +23,9 @@ def index():
 
 @app.route("/sets")
 def sets():
-    template = open("templates/sets.html").read()
-    rows = ""
+    with open("templates/sets.html") as f:
+        template = f.read()
+    row_parts = []
 
     start_time = perf_counter()
     conn = psycopg.connect(**DB_CONFIG)
@@ -34,19 +35,22 @@ def sets():
             for row in cur.fetchall():
                 html_safe_id = html.escape(row[0])
                 html_safe_name = html.escape(row[1])
-                existing_rows = rows
-                rows = existing_rows + f'<tr><td><a href="/set?id={html_safe_id}">{html_safe_id}</a></td><td>{html_safe_name}</td></tr>\n'
+                row_parts.append(
+                    f'<tr><td><a href="/set?id={html_safe_id}">{html_safe_id}</a></td><td>{html_safe_name}</td></tr>\n'
+                )  
         print(f"Time to render all sets: {perf_counter() - start_time}")
     finally:
         conn.close()
 
+    rows = "".join(row_parts)
     page_html = template.replace("{ROWS}", rows)
     return Response(page_html, content_type="text/html")
 
 
 @app.route("/set")
 def legoSet():  # We don't want to call the function `set`, since that would hide the `set` data type.
-    template = open("templates/set.html").read()
+    with open("templates/set.html") as f:
+        template = f.read()
     return Response(template)
 
 
